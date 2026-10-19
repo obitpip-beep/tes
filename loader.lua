@@ -1,24 +1,28 @@
--- Loader Anti-Gagal buat Prof Bitsz 'Dty
-local url = "https://raw.githubusercontent.com/obitpip-beep/tes/main/dty.lua"
+-- ==========================================
+-- PATRICK AI - LOADER
+-- ==========================================
 
--- Coba ambil script pakai HttpGet biasa
-local success, scriptCode = pcall(function()
-    return game:HttpGet(url)
-end)
+-- Copy link RAW dari file dtyhub.lua lu, paste di bawah ini:
+local URL = "https://raw.githubusercontent.com/obitpip-beep/tes/refs/heads/main/dtyhub.lua"
 
-if success and type(scriptCode) == "string" and scriptCode ~= "" then
-    -- Eksekusi scriptnya
-    local func, err = loadstring(scriptCode)
-    if func then
-        func()
-        print("[Patrick AI] Loader Sukses! Script Jalan.")
+-- Notifikasi Loading
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "Patrick AI",
+    Text = "Memuat Script Utama...",
+    Duration = 3
+})
+
+-- Eksekusi Script
+local ok, source = pcall(game.HttpGet, game, URL) 
+    
+if ok and type(source) == "string" and source ~= "" then 
+    local chunk = loadstring(source) 
+    if chunk then 
+        chunk() 
+        print("[Patrick AI] Sukses load script!")
     else
-        warn("[Patrick AI] Gagal nge-load script: " .. tostring(err))
+        warn("[Patrick AI] Gagal compile script.")
     end
 else
-    -- Kalau gagal HttpGet, coba pake fungsi bawaan game
-    task.spawn(function()
-        local chunk = game:HttpGet(url)
-        loadstring(chunk)()
-    end)
+    warn("[Patrick AI] Gagal load dari GitHub.")
 end
