@@ -1,28 +1,31 @@
--- ==========================================
--- PATRICK AI - LOADER
--- ==========================================
+local SAE = "https://raw.githubusercontent.com/obitpip-beep/tes/refs/heads/main/dtyhub.lua"
 
--- Copy link RAW dari file dtyhub.lua lu, paste di bawah ini:
-local URL = "https://raw.githubusercontent.com/obitpip-beep/tes/refs/heads/main/dtyhub.lua"
+local byGameId = {
+    [10563114921] = SAE,
+}
 
--- Notifikasi Loading
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "Patrick AI",
-    Text = "Memuat Script Utama...",
-    Duration = 3
-})
+local byPlaceId = {
+    [107778070777162] = SAE,
+}
 
--- Eksekusi Script
-local ok, source = pcall(game.HttpGet, game, URL) 
-    
-if ok and type(source) == "string" and source ~= "" then 
-    local chunk = loadstring(source) 
-    if chunk then 
-        chunk() 
-        print("[Patrick AI] Sukses load script!")
-    else
-        warn("[Patrick AI] Gagal compile script.")
+local gameId = game.GameId
+while gameId == 0 and game.PlaceId == 0 do
+    task.wait()
+    gameId = game.GameId
+end
+
+local url = byGameId[gameId] or byPlaceId[game.PlaceId]
+
+if not url then return end
+
+for _ = 1, 3 do
+    local ok, source = pcall(game.HttpGet, game, url)
+    if ok and type(source) == "string" and source ~= "" then
+        local chunk = loadstring(source)
+        if chunk then
+            chunk()
+        end
+        return
     end
-else
-    warn("[Patrick AI] Gagal load dari GitHub.")
+    task.wait(0.5)
 end
