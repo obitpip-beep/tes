@@ -1,9 +1,9 @@
 --[[
-    OPah ICON — Delta Script v2
-    - Kebal BYPASS (gak kena opah, nyawa aman)
-    - Kebal Sendiri / Kebal Semua Teman
-    - ESP Tracer ke Kunci (biru/merah/ungu/hijau/kuning) & Kode
-    - Menu draggable, background hitam
+    OPah ICON — Delta Script v4
+    - ESP HANYA kunci (biru/merah/ungu/hijau/kuning) + kode
+    - Kebal nyawa lock (max 2, gak turun)
+    - Kebal Sendiri / Teman
+    - Menu draggable hitam
 ]]
 
 local Players = game:GetService("Players")
@@ -11,7 +11,7 @@ local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- ====== CONFIG WARNA KUNCI ======
+-- ====== WARNA KUNCI (cuma ini yang di-ESP) ======
 local KEY_COLORS = {
     biru    = Color3.fromRGB(0, 150, 255),
     merah   = Color3.fromRGB(255, 60, 60),
@@ -29,18 +29,15 @@ gui.IgnoreGuiInset = true
 gui.Parent = (pcall(function() return CoreGui end) and CoreGui) or LocalPlayer:WaitForChild("PlayerGui")
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 200, 0, 160)
+main.Size = UDim2.new(0, 210, 0, 165)
 main.Position = UDim2.new(0, 20, 0, 20)
 main.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-main.BackgroundTransparency = 0.15
+main.BackgroundTransparency = 0.1
 main.BorderSizePixel = 0
 main.Active = true
 main.Draggable = true
 main.Parent = gui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 6)
-corner.Parent = main
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 6)
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 24)
@@ -63,106 +60,110 @@ local function makeBtn(text, y)
     b.TextSize = 13
     b.AutoButtonColor = true
     b.Parent = main
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 4)
-    c.Parent = b
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
     return b
 end
 
-local espBtn        = makeBtn("ESP Tracer: OFF 🚀", 30)
+local espBtn        = makeBtn("ESP Kunci&Kode: OFF 🚀", 30)
 local invulnSelfBtn = makeBtn("Kebal Sendiri: OFF 🗿", 64)
 local invulnTeamBtn = makeBtn("Kebal Teman: OFF 😈", 98)
 
--- ====== ESP TRACER ======
-local espEnabled = false
-local tracers = {}
-local espConns = {}
-
-local function getKeyColor(name)
+-- ====== FILTER ESP (STRICT) ======
+local function matchKeyColor(name)
     local lower = name:lower()
     for colorName, col in pairs(KEY_COLORS) do
-        if lower:find(colorName) then return col end
+        if lower:find(colorName, 1, true) then return col end
     end
     return nil
 end
 
-local function isCode(name)
+local function matchCode(name)
     local lower = name:lower()
     for _, kw in ipairs(CODE_KEYWORDS) do
-        if lower:find(kw) then return true end
+        if lower:find(kw, 1, true) then return true end
     end
     return false
 end
 
-local function getTargetPart(inst)
+-- Cuma 2 kondisi ini yang lolos
+local function shouldESP(name)
+    if matchKeyColor(name) then return true end
+    if matchCode(name) then return true end
+    return false
+end
+
+local function colorFor(name)
+    local c = matchKeyColor(name)
+    if c then return c end
+    if matchCode(name) then return Color3.fromRGB(255, 255, 255) end
+    return nil
+end
+
+-- ====== ESP MULTI TRACER ======
+local espEnabled = false
+local tracers = {}
+local espConns = {}
+
+local function getPart(inst)
     if inst:IsA("BasePart") then return inst end
     if inst:IsA("Model") then
         return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+    end
+    if inst:IsA("Tool") then
+        return inst:FindFirstChildWhichIsA("BasePart") or inst:FindFirstChildWhichIsA("Handle")
     end
     return nil
 end
 
 local function createTracer(inst, color)
     if tracers[inst] then return end
-    local part = getTargetPart(inst)
+    local part = getPart(inst)
     if not part then return end
 
     local line = Drawing.new("Line")
     line.Thickness = 1.5
     line.Transparency = 1
     line.Color = color
-    line.Visible = false
 
     local label = Drawing.new("Text")
     label.Size = 14
     label.Center = true
     label.Outline = true
     label.Color = color
-    label.Transparency = 1
     label.Text = inst.Name
-    label.Visible = false
 
     tracers[inst] = {line = line, label = label, part = part}
+end
 
-    local conn = RunService.RenderStepped:Connect(function()
+local function renderTracers()
+    for inst, t in pairs(tracers) do
         if not espEnabled then
-            line.Visible = false
-            label.Visible = false
-            return
+            t.line.Visible = false; t.label.Visible = false; continue
         end
-        local p = tracers[inst]
-        if not p or not p.part or not p.part.Parent then
-            line.Visible = false
-            label.Visible = false
-            return
+        local part = t.part
+        if not part or not part.Parent then
+            local np = getPart(inst)
+            if np then t.part = np; part = np
+            else t.line.Visible = false; t.label.Visible = false; continue end
         end
-        local ok, screen = pcall(function()
-            return workspace.CurrentCamera:WorldToViewportPoint(p.part.Position)
-        end)
+        local cam = workspace.CurrentCamera
+        local ok, screen = pcall(function() return cam:WorldToViewportPoint(part.Position) end)
         if not ok or screen.Z <= 0 then
-            line.Visible = false
-            label.Visible = false
-            return
+            t.line.Visible = false; t.label.Visible = false; continue
         end
-        local vp = workspace.CurrentCamera.ViewportSize
-        line.From = Vector2.new(vp.X / 2, vp.Y)
-        line.To = Vector2.new(screen.X, screen.Y)
-        line.Visible = true
-        label.Position = Vector2.new(screen.X, screen.Y - 16)
-        label.Visible = true
-    end)
-    table.insert(espConns, conn)
+        local vp = cam.ViewportSize
+        t.line.From = Vector2.new(vp.X / 2, vp.Y)
+        t.line.To = Vector2.new(screen.X, screen.Y)
+        t.line.Visible = true
+        t.label.Position = Vector2.new(screen.X, screen.Y - 16)
+        t.label.Visible = true
+    end
 end
 
 local function scanESP()
     for _, d in ipairs(workspace:GetDescendants()) do
-        local col = nil
-        if d:IsA("BasePart") or d:IsA("Model") then
-            col = getKeyColor(d.Name)
-            if not col and isCode(d.Name) then
-                col = Color3.fromRGB(255, 255, 255)
-            end
-            if col then createTracer(d, col) end
+        if (d:IsA("BasePart") or d:IsA("Model") or d:IsA("Tool")) and shouldESP(d.Name) then
+            createTracer(d, colorFor(d.Name))
         end
     end
 end
@@ -179,69 +180,65 @@ end
 
 espBtn.MouseButton1Click:Connect(function()
     espEnabled = not espEnabled
-    espBtn.Text = "ESP Tracer: " .. (espEnabled and "ON 🔥" or "OFF 🚀")
+    espBtn.Text = "ESP Kunci&Kode: " .. (espEnabled and "ON 🔥" or "OFF 🚀")
     if espEnabled then
         scanESP()
-        local c = workspace.DescendantAdded:Connect(function(d)
+        table.insert(espConns, workspace.DescendantAdded:Connect(function(d)
             if not espEnabled then return end
-            if d:IsA("BasePart") or d:IsA("Model") then
-                local col = getKeyColor(d.Name)
-                if not col and isCode(d.Name) then col = Color3.fromRGB(255,255,255) end
-                if col then createTracer(d, col) end
+            if (d:IsA("BasePart") or d:IsA("Model") or d:IsA("Tool")) and shouldESP(d.Name) then
+                createTracer(d, colorFor(d.Name))
             end
-        end)
-        table.insert(espConns, c)
+        end))
+        table.insert(espConns, RunService.RenderStepped:Connect(renderTracers))
     else
         clearESP()
     end
 end)
 
--- ====== MODE KEBAL BYPASS ======
+-- ====== KEBAL BYPASS ======
 local invulnSelf = false
 local invulnTeam = false
 local protected = {}
+local originalHealth = {}
 
 local function lockChar(char)
     if not char then return end
     protected[char] = true
-
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.MaxHealth = math.huge
-        hum.Health = math.huge
-        hum.HealthChanged:Connect(function()
-            if protected[char] then
-                hum.Health = math.huge
-            end
+        if not originalHealth[char] then originalHealth[char] = hum.MaxHealth end
+        local baseHP = originalHealth[char]
+        hum.MaxHealth = baseHP
+        hum.Health = baseHP
+        hum.HealthChanged:Connect(function(h)
+            if protected[char] and h < baseHP then hum.Health = baseHP end
         end)
         hum.Died:Connect(function()
-            if protected[char] and char.Parent then
-                hum.Health = math.huge
-            end
+            if protected[char] and char.Parent then task.wait(0); hum.Health = baseHP end
         end)
     end
-
-    -- ForceField permanen biar kill brick/opah gak ngaruh
-    local ff = char:FindFirstChildOfClass("ForceField")
-    if not ff then
-        ff = Instance.new("ForceField")
-        ff.Visible = false
-        ff.Parent = char
+    local function ensureFF()
+        local ff = char:FindFirstChildOfClass("ForceField")
+        if not ff then ff = Instance.new("ForceField"); ff.Visible = false; ff.Parent = char
+        else ff.Visible = false end
     end
-    ff.Visible = false
-
-    -- Hapus ForceField baru yang bisa dateng (kadang game ngasih buat bypass)
+    ensureFF()
     char.ChildAdded:Connect(function(c)
-        if c:IsA("ForceField") and protected[char] then
-            c.Visible = false
+        if c:IsA("ForceField") and protected[char] then c.Visible = false end
+        if c:IsA("Tool") and protected[char] then
+            local n = c.Name:lower()
+            if n:find("opah") or n:find("kill") or n:find("damage") then
+                task.defer(function() pcall(function() c:Destroy() end) end)
+            end
         end
     end)
-
-    -- Hapus part kill / opah yang nempel
     char.DescendantAdded:Connect(function(d)
         if not protected[char] then return end
-        if d:IsA("BasePart") and (d.Name:lower():find("kill") or d.Name:lower():find("opah") or d.Name:lower():find("damage")) then
-            task.defer(function() if d and d.Parent then d:Destroy() end end)
+        if d:IsA("BasePart") then
+            local n = d.Name:lower()
+            if n:find("kill") or n:find("opah") or n:find("damage") or n:find("hurt") then
+                task.defer(function() if d and d.Parent then d:Destroy() end end)
+            end
         end
     end)
 end
@@ -251,8 +248,9 @@ local function unlockChar(char)
     protected[char] = nil
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
-        hum.MaxHealth = 100
-        hum.Health = math.min(hum.Health, 100)
+        local base = originalHealth[char] or 2
+        hum.MaxHealth = base
+        hum.Health = math.min(hum.Health, base)
     end
 end
 
@@ -267,16 +265,12 @@ invulnTeamBtn.MouseButton1Click:Connect(function()
     invulnTeam = not invulnTeam
     invulnTeamBtn.Text = "Kebal Teman: " .. (invulnTeam and "ON 🔥" or "OFF 😈")
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            local char = plr.Character
-            if char then
-                if invulnTeam then lockChar(char) else unlockChar(char) end
-            end
+        if plr ~= LocalPlayer and plr.Character then
+            if invulnTeam then lockChar(plr.Character) else unlockChar(plr.Character) end
         end
     end
 end)
 
--- Auto reapply on respawn
 LocalPlayer.CharacterAdded:Connect(function(char)
     task.wait(0.3)
     if invulnSelf then lockChar(char) end
@@ -289,26 +283,23 @@ Players.PlayerAdded:Connect(function(plr)
     end)
 end)
 
--- Loop jaga-jaga (opah kadang bypass HealthChanged)
 RunService.Heartbeat:Connect(function()
     if invulnSelf and LocalPlayer.Character then
         local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum and hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
+        local base = originalHealth[LocalPlayer.Character] or 2
+        if hum and hum.Health < base then hum.Health = base end
     end
     if invulnTeam then
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character then
                 local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
+                local base = originalHealth[plr.Character] or 2
+                if hum and hum.Health < base then hum.Health = base end
             end
         end
     end
 end)
 
--- Init scan
-task.spawn(function()
-    task.wait(2)
-    scanESP()
-end)
+task.spawn(function() task.wait(2); scanESP() end)
 
-print("[OpahIcon v2] Loaded ✅")
+print("[OpahIcon v4] Loaded ✅")
